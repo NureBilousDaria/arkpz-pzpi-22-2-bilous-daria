@@ -1,0 +1,222 @@
+﻿Міністерство освіти і науки України Харківський національний університет радіоелектроніки
+
+
+
+Кафедра «Програмної інженерії»
+
+
+
+
+Звіт з лабораторної роботи № 4
+з дисципліни: «Аналіз та рефакторинг коду програмного забезпечення» на тему проєкту: «Програмна система для контролю праці співробітників»
+
+
+
+
+Виконала:	 
+ст. гр. ПЗПІ-22-2	
+Білоус Дар’я Олександрівна	
+
+Перевірив:
+Ст. викладач
+Сокорчук Ігор Петрович
+
+
+
+Харків 2024
+
+
+
+
+РОЗРОБКА IoT КЛІЄНТА (БІЗНЕС-ЛОГІКИ ТА 
+ФУНКЦІЙ НАЛАШТУВАННЯ)
+
+Мета
+
+Метою даної лабораторної роботи є розробити програмне забезпечення для  IoT або SmartDevice пристрою, створеного на базі будь-якої поширеної на  сьогодні платформи, придатної для реалізації вбудованих систем (Embedded  System), для програмної системи для контролю праці співробітників.
+
+Хід роботи
+
+
+Протягом виконання лабораторної роботи було розроблено програмне забезпечення для IoT пристроїв, які є частиною програмної системи для контролю праці співробітників. Опис інженерних рішень:
+IoT пристрій розроблений за допомогою платформи Arduino та емулятору Wokwi. Сам пристрій складається з мікроконтролеру ESP32, датчика температури DHT22, датчику пульсу та звичайної кнопки. IoT пристрій взаємодіє з серверною частиною за REST API та по протоколу HTTP. Програмний код IoT пристрою наведений у додатку В.
+Перед реалізацією програмного коду девайсів було реалізовано UML діаграми прецедентів та діяльності для них (див. Додатки А-Б). 
+Бізнес логіка IoT клієнтів пов’язана із тим, що робітник має можливість увімкнути та вимкнути свій розумний пристрій, розпочавши збір даних (розпочати відлік часу, який він буде працювати), зібрати усі дані про свій стан (температура тіла, пульс, час роботи) та переглянути їх. Ці дані будуть відправлені на серверну частину програмної системи, для подальшої обробки. Налаштування IoT клієнтів включає їх реєстрацію в системі, їх вмикання та вимикання, а також редагування пов’язаних з ними даних у системі.
+
+
+Висновок
+
+Протягом лабораторної роботи мною було побудовано діаграми прецедентів та діяльності для IoT пристрою (див. Додатки А-Б). На базі цих діаграм було реалізовано програмний код для зазначеного раніше девайсу (див. Додаток В). 
+Посилання на відео на Ютубі: https://youtu.be/wVBKaeUxpG0
+
+
+
+
+
+
+
+
+
+
+ДОДАТОК А
+UML діаграма прецедентів
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ДОДАТОК Б
+UML діаграма діяльності
+
+
+
+
+
+
+
+ДОДАТОК В
+
+Програмний код
+
+        1. #include <WiFi.h>
+        2. #include <HTTPClient.h>
+        3. #include "DHTesp.h"
+        4. 
+        5. #define BUTTON_PIN 12
+        6. #define DHT_PIN 15
+        7. #define PULSE_PIN 35
+        8. 
+        9. const char* ssid = "Wokwi-GUEST";
+        10. const char* password = ""; 11.
+    12. const char* serverUrl =
+    13. "http://host.wokwi.internal:5000/api/scanner-history/";
+    14. 
+    15. DHTesp dhtSensor;
+    16. 
+    17. unsigned long last_button_press = 0;
+    18. bool isMeasuring = false;
+    19. bool isButtonPressed = false;
+    20. float temperature = 0.0;
+    21. int pulse = 0;
+    22. unsigned long activeWorkedTime = 0;
+    23. int scannerId = 34;
+    24. 
+    25. void setup() {
+    26. Serial.begin(115200);
+    27. Serial.println("Esp 32 work start");
+    28. 
+    29. pinMode(BUTTON_PIN, INPUT_PULLUP);
+    30. dhtSensor.setup(DHT_PIN, DHTesp::DHT22);
+    31. 
+    32. WiFi.begin(ssid, password);
+    33. while (WiFi.status() != WL_CONNECTED) {
+    34. delay(100);
+    35. Serial.println("Connecting to WiFi...");
+36.	}
+37.	Serial.println("Connected to WiFi");
+38. }
+39.
+    40. void loop () {
+    41. if (digitalRead(BUTTON_PIN) == LOW
+    42. && !isMeasuring && !isButtonPressed) {
+    43. delay(10);
+    44. startMeasurement();
+    45. delay(20);
+    46. } else if (digitalRead(BUTTON_PIN) == HIGH
+
+47.	&&	isMeasuring && !isButtonPressed) {
+48.		isButtonPressed = true;
+49.		delay(10);
+50.	}	else if (digitalRead(BUTTON_PIN) == LOW
+    51. && isMeasuring && isButtonPressed) {
+    52. delay(10);
+    53. stopMeasurement();
+54.	}
+55. }
+56.
+    57. void startMeasurement() {
+    58. isMeasuring = true;
+    59. last_button_press = millis();
+    60. Serial.println("Time measurement started");
+61. }
+62.
+    63. void stopMeasurement() {
+    64. isMeasuring = false;
+    65. activeWorkedTime = (millis() - last_button_press) / 100;
+    66. Serial.print("Time: ");
+    67. Serial.println(activeWorkedTime);
+    68. measureTemp();
+    69. measurePulse();
+    70. sendDataToServer();
+71. }
+72.
+    73. void measureTemp() {
+    74. TempAndHumidity data = dhtSensor.getTempAndHumidity();
+    75. temperature = data.temperature;
+    76. Serial.print("Temperature: ");
+    77. Serial.print(temperature, 1);
+    78. Serial.println("°C");
+79. }
+80.
+    81. void measurePulse() {
+    82. int pulseValue = analogRead(PULSE_PIN);
+    83. float voltage = pulseValue * (5.0 / 4095.0);
+    84. int heartRate = (voltage / 3.3) * 675;
+    85. pulse = heartRate;
+    86. Serial.print("Heart rate: ");
+    87. Serial.println(heartRate);
+88. }
+89.
+    90. void sendDataToServer() {
+    91. if (WiFi.status() == WL_CONNECTED) {
+    92. HTTPClient http;
+    93. 
+    94. http.begin(serverUrl);
+    95. http.addHeader("Content-Type", "application/json");
+    96. 
+    97. String jsonPayload = "{";
+    98. jsonPayload += "\"temperature\": " + String(temperature)
++ ",";
+   99. jsonPayload += "\"pulse\": " + String(pulse) + ",";
+ 100. jsonPayload += "\"activeWorkedTime\": "
+101. + String(activeWorkedTime) + ",";
+ 102. jsonPayload += "\"scannerId\": " + String(scannerId);
+ 103. jsonPayload += "}"; 104.
+105.	int httpResponseCode = http.POST(jsonPayload); 106.
+107. if (httpResponseCode > 0) {
+108. String response = http.getString();
+109. Serial.println("HTTP Response code: " + String(httpResponseCode));
+110. Serial.println("Response: " + response);
+111. } else {
+ 112. Serial.println("Error on sending POST: " + String(httpResponseCode));
+113.		}
+114.		
+115.		http.end();
+116.		} else {
+117.		Serial.println("WiFi Disconnected");
+118.		}
+119.	}	
+
+
+
+
+
+
+
+
+
+
+
+Додаток Д
+
+Посилання на відео на Ютубі: https://youtu.be/wVBKaeUxpG0
+
